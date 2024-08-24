@@ -46,10 +46,11 @@ class Fr_Thumbnails_Folder_Image_Resizer {
      * @since 1.0.0
      * @param array $args
      */
-    public function __construct($args) {
+    public function __construct($args, $wanted_size) {
         $this->args = $args;
+        $this->wanted_size = $wanted_size;
     }
-
+    
     /**
      * Resize the image.
      * 
@@ -59,12 +60,11 @@ class Fr_Thumbnails_Folder_Image_Resizer {
      */
     public function resize() {
         $this->set_metadata();
-        $this->set_wanted_size();
 
         if (!$this->wanted_size) {
             return;
-        }
-
+        }      
+        
         return $this->generate_image_size();
     }
     
@@ -87,41 +87,7 @@ class Fr_Thumbnails_Folder_Image_Resizer {
         $this->metadata = wp_get_attachment_metadata($this->args['id']);
         $this->metadata = $this->metadata ? $this->metadata : array();
     }
-    
-    /**
-     * Set the $wanted_size property.
-     * 
-     * @since 1.0.0
-     */
-    protected function set_wanted_size() {
-        $additional_image_sizes = wp_get_additional_image_sizes();
-        
-        $width  = 0;
-        $height = 0;
-        $crop   = false;
 
-        if (isset($additional_image_sizes[$this->args['size']])) {
-            $width  = $additional_image_sizes[$this->args['size']]['width'];
-            $height = $additional_image_sizes[$this->args['size']]['height'];
-            $crop   = isset($additional_image_sizes[$this->args['size']]['crop'] ) ? $additional_image_sizes[$this->args['size']]['crop'] : false;
-        } else if (in_array($this->args['size'], array('thumbnail', 'medium', 'large'))) {
-            $width  = get_option($this->args['size'] . '_size_w');
-            $height = get_option($this->args['size'] . '_size_h');
-            $crop   = ('thumbnail' === $this->args['size']) ? (bool) get_option('thumbnail_crop') : false;
-        } else {
-            return;
-        }
-
-        if (!$width && !$height) {
-            return;
-        }   
-        
-        $this->wanted_size = array(
-            'width'     => $width,
-            'height'    => $height,
-            'crop'      => $crop,
-        );
-    }
     
     /**
      * Generate image size.
@@ -132,7 +98,7 @@ class Fr_Thumbnails_Folder_Image_Resizer {
      */
     protected function generate_image_size() {
         $image_path = get_attached_file($this->args['id']);
-
+        
         // If it isn't an image, we'll use the converted image as source image.
         if (!wp_attachment_is_image($this->args['id'])) {
             if (isset($this->metadata['sizes']['full']['file'])) {

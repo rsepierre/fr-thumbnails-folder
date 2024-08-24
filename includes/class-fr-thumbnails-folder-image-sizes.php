@@ -22,7 +22,7 @@ class Fr_Thumbnails_Folder_Image_Sizes {
     public function disable_image_sizes_generation() {
         return array();
     }
-
+    
     /**
      * Remove the all image sizes that will automatically generated when uploading a non-image mime types.
      *
@@ -50,7 +50,7 @@ class Fr_Thumbnails_Folder_Image_Sizes {
      * @return bool|array           Array containing the image URL, width, height, and boolean for whether
      *                              the image is an intermediate size. False on failure.
      */
-    public function maybe_generate_intermediate_image($downsize, $id, $size) {
+    public function maybe_generate_intermediate_image($downsize, $id, $size) {        
         /**
          * No need to generate if array $size is provided. WordPress itself does not generate it,
          * but instead find the best match image size. {@see image_get_intermediate_size()}
@@ -58,7 +58,7 @@ class Fr_Thumbnails_Folder_Image_Sizes {
         if ($downsize !== false || is_array($size)) {
             return $downsize;
         }
-         
+        
         $metadata = wp_get_attachment_metadata($id);
                 
         // Skip if
@@ -77,16 +77,75 @@ class Fr_Thumbnails_Folder_Image_Sizes {
         if ($existing_image) {
             return $existing_image;
         }
+
+        // We want to know if any image would be generated before calling image editor
+        $wanted_size = $this->get_wanted_size($size);
+
+        // Skip if wanted_size null
+        if(!$wanted_size) {
+            return $downsize;
+        }
         
+        /* Debugging 
+        error_log("ID: " . $id . " Size name : " . $size . " desired:" . $wanted_size['width'] . " Original: " . $metadata['width']);
+        */
+
+        // Skip if wanted_size larger than original
+        if ($wanted_size['width'] >= $metadata['width']) {
+            return $downsize;
+        }
+
+        /* Debugging
+        error_log('GENERATED !!');
+        */
+
         require_once plugin_dir_path(__FILE__) . 'class-fr-thumbnails-folder-image-resizer.php';
         
-        $image_resizer  = new Fr_Thumbnails_Folder_Image_Resizer(array(
-                            'id'    => $id, 
-                            'size'  => $size
-                        ));
+        $image_resizer  = new Fr_Thumbnails_Folder_Image_Resizer(
+            array(
+                'id'    => $id, 
+                'size'  => $size
+            ),
+            $wanted_size
+        );
         $result         = $image_resizer->resize();
         
         return $result ? $result : $downsize;
+    }
+
+    /**
+     * Returns the $wanted_size in a array.
+     * 
+     * @since 1.0.0
+     */
+    public function get_wanted_size($size) {
+		$additional_image_sizes = wp_get_additional_image_sizes();
+        
+        $width  = 0;
+        $height = 0;
+        $crop   = false;
+
+        if (isset($additional_image_sizes[$size])) {
+            $width  = $additional_image_sizes[$size]['width'];
+            $height = $additional_image_sizes[$size]['height'];
+            $crop   = isset($additional_image_sizes[$size]['crop'] ) ? $additional_image_sizes[$size]['crop'] : false;
+        } else if (in_array($size, array('thumbnail', 'medium', 'large'))) {
+            $width  = get_option($size . '_size_w');
+            $height = get_option($size . '_size_h');
+            $crop   = ('thumbnail' === $size) ? (bool) get_option('thumbnail_crop') : false;
+        } else {
+            return;
+        }
+
+        if (!$width && !$height) {
+            return;
+        }   
+        
+        return array(
+            'width'     => $width,
+            'height'    => $height,
+            'crop'      => $crop,
+        );
     }
 
     /**
@@ -152,14 +211,14 @@ class Fr_Thumbnails_Folder_Image_Sizes {
      */
     public function delete_image_sizes($post_id) {
         $metadata = wp_get_attachment_metadata($post_id);
-
-        if (isset($metadata['sizes']) && is_array($metadata['sizes'])) {
+        
+	if (isset($metadata['sizes']) && is_array($metadata['sizes'])) {
             foreach ($metadata['sizes'] as $sizeinfo) {
                 if (isset($sizeinfo['path'])) {
                     wp_delete_file($sizeinfo['path']);
                 }
             }
-        }
+	}
     }
     
     /**
@@ -218,24 +277,24 @@ class Fr_Thumbnails_Folder_Image_Sizes {
     public function delete_all_image_sizes($post_id) {
         $file       = get_attached_file($post_id);
         $metadata   = wp_get_attachment_metadata($post_id);
-        $uploadpath = wp_get_upload_dir();
-
-        if (isset($metadata['sizes']) && is_array($metadata['sizes'])) {
-            foreach ($metadata['sizes'] as $sizeinfo) {
+	$uploadpath = wp_get_upload_dir();
+        
+	if (isset($metadata['sizes']) && is_array($metadata['sizes'])) {
+            foreach ($metadata['sizes'] as $sizeinfo) {                
                 if (isset($sizeinfo['path'])) {
                     wp_delete_file($sizeinfo['path']);
                 } else {
                     $intermediate_file      = str_replace(basename($file), $sizeinfo['file'], $file);
                     $intermediate_file_path = path_join($uploadpath['basedir'], $intermediate_file);
-
+                    
                     wp_delete_file($intermediate_file_path);
                 }
             }
-
+            
             $metadata['sizes'] = array();
-
+            
             wp_update_attachment_metadata($post_id, $metadata);
-        }
+	}
     }
     
     /**
